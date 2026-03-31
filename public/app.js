@@ -19,6 +19,8 @@ const toolBoxEl = document.getElementById('tool-box');
 const visionBoxEl = document.getElementById('vision-box');
 const visionImageEl = document.getElementById('vision-image');
 const visionPreviewEl = document.getElementById('vision-preview');
+const providerToolingBoxEl = document.getElementById('provider-tooling-box');
+const providerToolingCopyEl = document.getElementById('provider-tooling-copy');
 
 const sttForm = document.getElementById('stt-form');
 const sttFileEl = document.getElementById('stt-file');
@@ -106,6 +108,15 @@ function addMessage(role, content) {
 
 function isGroqMode() {
   return providerEl.value === 'groq';
+}
+
+function providerHasCapabilities() {
+  return Boolean(selectedProviderConfig()?.capabilities);
+}
+
+function activeCapability() {
+  if (!providerHasCapabilities()) return null;
+  return selectedCapability;
 }
 
 function selectedProviderConfig() {
@@ -212,7 +223,7 @@ function updateTtsVoices() {
 
 function renderCapabilityTabs() {
   tabsEl.innerHTML = '';
-  const capMap = providers.groq?.capabilities || {};
+  const capMap = selectedProviderConfig()?.capabilities || {};
 
   orderedCapabilityEntries(capMap).forEach(([capKey, capConfig]) => {
     const btn = document.createElement('button');
@@ -250,7 +261,7 @@ function filteredModelsForCurrentContext() {
   const config = selectedProviderConfig();
   if (!config) return [];
 
-  if (!isGroqMode()) return config.models || [];
+  if (!providerHasCapabilities()) return config.models || [];
 
   const cap = config.capabilities?.[selectedCapability];
   if (!cap) return config.models || [];
@@ -293,14 +304,15 @@ function populateModelOptions() {
 }
 
 function updatePanelVisibility() {
-  const groq = isGroqMode();
-  groqAreaEl.classList.toggle('hidden', !groq);
+  const hasCaps = providerHasCapabilities();
+  groqAreaEl.classList.toggle('hidden', !hasCaps);
 
-  const isStt = groq && selectedCapability === 'speech_to_text';
-  const isTts = groq && selectedCapability === 'text_to_speech';
-  const isVision = groq && selectedCapability === 'vision';
-  const isTool = groq && selectedCapability === 'function_calling';
-  const isText = !groq || TEXT_CAPABILITIES.has(selectedCapability);
+  const isStt = isGroqMode() && selectedCapability === 'speech_to_text';
+  const isTts = isGroqMode() && selectedCapability === 'text_to_speech';
+  const isVision = selectedCapability === 'vision';
+  const isTool = selectedCapability === 'function_calling';
+  const isText = !hasCaps || TEXT_CAPABILITIES.has(selectedCapability);
+  const showProviderTooling = providerEl.value === 'openrouter' && !isText;
 
   textPanelEl.classList.toggle('hidden', !isText);
   sttPanelEl.classList.toggle('hidden', !isStt);
@@ -308,6 +320,18 @@ function updatePanelVisibility() {
 
   toolBoxEl.classList.toggle('hidden', !isTool);
   visionBoxEl.classList.toggle('hidden', !isVision);
+  providerToolingBoxEl.classList.toggle('hidden', !showProviderTooling);
+
+  if (showProviderTooling) {
+    const notes = {
+      music_generation: 'Music/video/embedding models are listed and selectable. Many require specialized endpoints (not /chat/completions). Use provider docs or OpenRouter alpha access flow when chat calls fail.',
+      video_generation:
+        'Video generation is alpha. Request access via https://openrouter.notion.site/3282fd57c4dc80aba183f5024e233e74?pvs=105 and then use the video endpoint your account is enabled for.',
+      multimodal_embedding:
+        'Embeddings should be called through an embeddings endpoint and then plugged into retrieval. This UI currently provides model selection + prompt experimentation only.'
+    };
+    providerToolingCopyEl.textContent = notes[selectedCapability] || 'Selected capability may need a non-chat API route.';
+  }
 }
 
 async function loadProviders() {
@@ -319,8 +343,9 @@ async function loadProviders() {
 
   populateProviderOptions();
 
-  if (!providers.groq?.capabilities?.[selectedCapability]) {
-    selectedCapability = Object.keys(providers.groq?.capabilities || {})[0] || 'reasoning';
+  const currentProviderCaps = selectedProviderConfig()?.capabilities || {};
+  if (providerHasCapabilities() && !currentProviderCaps[selectedCapability]) {
+    selectedCapability = Object.keys(currentProviderCaps)[0] || 'text_to_text';
   }
 
   renderCapabilityTabs();
@@ -382,7 +407,7 @@ async function handleTextSubmit(event) {
 
   const provider = providerEl.value;
   const model = modelEl.value;
-  const capability = isGroqMode() ? selectedCapability : null;
+  const capability = activeCapability();
   const temperature = Number(temperatureEl.value);
 
   conversation.push({ role: 'user', content: text });
@@ -521,6 +546,10 @@ async function retryLast() {
 }
 
 providerEl.addEventListener('change', () => {
+  const capMap = selectedProviderConfig()?.capabilities || {};
+  if (providerHasCapabilities() && !capMap[selectedCapability]) {
+    selectedCapability = Object.keys(capMap)[0] || 'text_to_text';
+  }
   populateModelOptions();
   renderCapabilityTabs();
   updatePanelVisibility();

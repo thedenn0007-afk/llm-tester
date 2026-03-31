@@ -103,6 +103,34 @@ const GROQ_TTS_VOICES = {
   'canopylabs/orpheus-arabic-saudi': ['fahad', 'sultan', 'lulwa', 'noura']
 };
 
+const OPENROUTER_CAPABILITIES = {
+  text_to_text: {
+    label: 'Text to Text',
+    models: ['openrouter/free', 'meta-llama/llama-3.2-3b-instruct:free']
+  },
+  function_calling: {
+    label: 'Function Calling / Tool Use',
+    models: ['openrouter/free', 'meta-llama/llama-3.2-3b-instruct:free']
+  },
+  music_generation: {
+    label: 'Music Generation',
+    models: ['google/lyria-3-clip-preview']
+  },
+  video_generation: {
+    label: 'Video Generation (Alpha)',
+    models: [
+      'alibaba/wan-2.6-experimental',
+      'bytedance/seedance-1.5-pro-experimental',
+      'openai/sora-2-pro-experimental',
+      'google/veo-3.1-experimental'
+    ]
+  },
+  multimodal_embedding: {
+    label: 'Multimodal Embeddings',
+    models: ['nvidia/llama-nemotron-embed-vl-1b-v2:free']
+  }
+};
+
 const groqUniqueModelIds = Array.from(
   new Set(Object.values(GROQ_CAPABILITIES).flatMap((cap) => cap.models))
 );
@@ -161,8 +189,15 @@ const PROVIDERS = {
     defaultModel: 'openrouter/free',
     models: [
       { id: 'openrouter/free', label: 'openrouter/free' },
-      { id: 'meta-llama/llama-3.2-3b-instruct:free', label: 'meta-llama/llama-3.2-3b-instruct:free' }
-    ]
+      { id: 'meta-llama/llama-3.2-3b-instruct:free', label: 'meta-llama/llama-3.2-3b-instruct:free' },
+      { id: 'google/lyria-3-clip-preview', label: 'Google: Lyria 3 Clip Preview (4.19M tok, 30s @ $0.04/clip)' },
+      { id: 'alibaba/wan-2.6-experimental', label: 'Alibaba: Wan 2.6 (experimental)' },
+      { id: 'bytedance/seedance-1.5-pro-experimental', label: 'ByteDance: Seedance 1.5 Pro (experimental)' },
+      { id: 'openai/sora-2-pro-experimental', label: 'OpenAI: Sora 2 Pro (experimental)' },
+      { id: 'google/veo-3.1-experimental', label: 'Google: Veo 3.1 (experimental)' },
+      { id: 'nvidia/llama-nemotron-embed-vl-1b-v2:free', label: 'NVIDIA: Llama Nemotron Embed VL 1B V2 (free)' }
+    ],
+    capabilities: OPENROUTER_CAPABILITIES
   }
 };
 
@@ -394,7 +429,7 @@ function buildVisionMessages(messages, images) {
   return cloned;
 }
 
-async function handleGroqFunctionCalling(provider, model, incomingMessages, selectedTools) {
+async function handleFunctionCalling(providerKey, provider, model, incomingMessages, selectedTools) {
   const toolTrace = [];
   const messages = [...incomingMessages];
 
@@ -407,7 +442,7 @@ async function handleGroqFunctionCalling(provider, model, incomingMessages, sele
     tool_choice: 'auto'
   };
 
-  const first = await callChat('groq', provider, call1Payload);
+  const first = await callChat(providerKey, provider, call1Payload);
   if (!first.response.ok) {
     return { ok: false, status: first.response.status, raw: first.data, elapsedMs: first.elapsedMs };
   }
@@ -458,7 +493,7 @@ async function handleGroqFunctionCalling(provider, model, incomingMessages, sele
     stream: false
   };
 
-  const second = await callChat('groq', provider, call2Payload);
+  const second = await callChat(providerKey, provider, call2Payload);
   if (!second.response.ok) {
     return { ok: false, status: second.response.status, raw: second.data, elapsedMs: first.elapsedMs + second.elapsedMs };
   }
@@ -510,14 +545,14 @@ async function handleChat(req, res) {
       return sendJson(res, 400, { error: 'Use /api/groq/tts for text-to-speech.' });
     }
 
-    if (providerKey === 'groq' && capability === 'function_calling') {
+    if (capability === 'function_calling') {
       const requestedNames = Array.isArray(incoming.tools) ? incoming.tools : ['get_weather', 'calculate_math', 'search_docs'];
       const selectedTools = PRESET_TOOLS.filter((t) => requestedNames.includes(t.function.name));
-      const toolRun = await handleGroqFunctionCalling(provider, model, messages, selectedTools);
+      const toolRun = await handleFunctionCalling(providerKey, provider, model, messages, selectedTools);
 
       if (!toolRun.ok) {
         return sendJson(res, toolRun.status || 500, {
-          error: toolRun.raw?.error?.message || toolRun.raw?.message || 'Groq function calling failed.',
+          error: toolRun.raw?.error?.message || toolRun.raw?.message || `${provider.label} function calling failed.`,
           raw: toolRun.raw
         });
       }
