@@ -59,6 +59,29 @@ const TEXT_CAPABILITIES = new Set([
   'safety'
 ]);
 
+const CAPABILITY_ORDER = [
+  'reasoning',
+  'function_calling',
+  'text_to_text',
+  'vision',
+  'speech_to_text',
+  'text_to_speech',
+  'multilingual',
+  'safety'
+];
+
+function orderedCapabilityEntries(capabilityMap) {
+  const indexMap = new Map(CAPABILITY_ORDER.map((key, index) => [key, index]));
+
+  return Object.entries(capabilityMap || {}).sort(([a], [b]) => {
+    const aIndex = indexMap.has(a) ? indexMap.get(a) : Number.MAX_SAFE_INTEGER;
+    const bIndex = indexMap.has(b) ? indexMap.get(b) : Number.MAX_SAFE_INTEGER;
+
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.localeCompare(b);
+  });
+}
+
 const conversation = [{ role: 'system', content: 'You are a helpful assistant.' }];
 let providers = {};
 let providerModelMemory = {};
@@ -191,7 +214,7 @@ function renderCapabilityTabs() {
   tabsEl.innerHTML = '';
   const capMap = providers.groq?.capabilities || {};
 
-  Object.entries(capMap).forEach(([capKey, capConfig]) => {
+  orderedCapabilityEntries(capMap).forEach(([capKey, capConfig]) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = capKey === selectedCapability ? 'tab active' : 'tab';
