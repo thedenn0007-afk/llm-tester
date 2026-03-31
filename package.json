@@ -1,0 +1,9 @@
+{
+  "name": "zai-chat-tester",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple clean chat UI to test z.ai LLM API",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
